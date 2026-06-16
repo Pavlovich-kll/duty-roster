@@ -8,6 +8,7 @@ create table if not exists developers (
   telegram text,
   mattermost text,
   phone text,
+  team text not null default 'java',
   created_at timestamp with time zone default now()
 );
 

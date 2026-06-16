@@ -29,9 +29,10 @@ export async function addDeveloper(formData: FormData) {
   await assertAdmin(supabase)
 
   const name = formData.get('name') as string
+  const team = formData.get('team') as string || 'java'
   if (!name) return { error: 'Введите имя' }
 
-  const { error } = await supabase.from('developers').insert({ name })
+  const { error } = await supabase.from('developers').insert({ name, team })
   if (error) return { error: error.message }
 
   revalidatePath('/admin')
@@ -44,6 +45,7 @@ export async function updateDeveloper(formData: FormData) {
 
   const id = formData.get('id') as string
   const name = formData.get('name') as string
+  const team = formData.get('team') as string || 'java'
   const sortOrder = parseInt(formData.get('sort_order') as string) || 0
   const telegram = formData.get('telegram') as string
   const mattermost = formData.get('mattermost') as string
@@ -51,7 +53,7 @@ export async function updateDeveloper(formData: FormData) {
 
   const { error } = await supabase
     .from('developers')
-    .update({ name, sort_order: sortOrder, telegram, mattermost, phone })
+    .update({ name, team, sort_order: sortOrder, telegram, mattermost, phone })
     .eq('id', id)
 
   if (error) return { error: error.message }

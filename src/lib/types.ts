@@ -12,8 +12,12 @@ export type Developer = {
   telegram: string | null
   mattermost: string | null
   phone: string | null
+  team: string
   created_at: string
 }
+
+export const TEAMS = ['java', 'ios', 'web', 'android'] as const
+export type Team = typeof TEAMS[number]
 
 export type ShiftWithDeveloper = {
   id: string

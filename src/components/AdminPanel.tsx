@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { ChevronLeft, ChevronRight, Trash2, Plus, Users, CalendarDays, Palmtree } from 'lucide-react'
 import { createClient } from '@/lib/supabase-client'
 import { setShift, removeShift, autoAssignShifts, clearShiftsForMonth, addVacation, deleteVacation, addDeveloper, updateDeveloper, deleteDeveloper } from '@/app/actions'
-import type { Developer, ShiftWithDeveloper, VacationWithDeveloper } from '@/lib/types'
+import type { Developer, ShiftWithDeveloper, VacationWithDeveloper, Team } from '@/lib/types'
+import { TEAMS } from '@/lib/types'
 
 const MONTHS = [
   'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
@@ -33,6 +34,8 @@ export default function AdminPanel({
   const [autoAssignLoading, setAutoAssignLoading] = useState(false)
   const [editingDev, setEditingDev] = useState<string | null>(null)
   const [newDevName, setNewDevName] = useState('')
+  const [newDevTeam, setNewDevTeam] = useState<Team>('java')
+  const [teamFilter, setTeamFilter] = useState<string>('all')
   const [newVacation, setNewVacation] = useState({ developer_id: '', start_date: '', end_date: '' })
   const supabase = createClient()
 
@@ -130,6 +133,7 @@ export default function AdminPanel({
     if (!newDevName.trim()) return
     const fd = new FormData()
     fd.set('name', newDevName.trim())
+    fd.set('team', newDevTeam)
     const res = await addDeveloper(fd)
     if (res.error) showMsg(res.error, false)
     else { setNewDevName(''); refreshDevs(); showMsg('Добавлен', true) }
@@ -178,6 +182,8 @@ export default function AdminPanel({
   const shiftMap = new Map<string, ShiftWithDeveloper>()
   shifts.forEach(s => shiftMap.set(s.date, s))
 
+  const filteredDevs = teamFilter === 'all' ? developers : developers.filter(d => d.team === teamFilter)
+
   // ── Tabs ──
   const tabs: { key: Tab; label: string; icon: any }[] = [
     { key: 'shifts', label: 'Дежурства', icon: CalendarDays },
@@ -206,7 +212,6 @@ export default function AdminPanel({
         </div>
       )}
 
-      {/* ── Shifts ── */}
       {tab === 'shifts' && (
         <div>
           <div className="mb-4 flex items-center justify-between">
@@ -223,6 +228,14 @@ export default function AdminPanel({
               className="rounded-lg border border-red-300 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50">
               Очистить месяц
             </button>
+          </div>
+          <div className="mb-3 flex flex-wrap gap-1.5">
+            <button onClick={() => setTeamFilter('all')}
+              className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${teamFilter === 'all' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>Все</button>
+            {TEAMS.map(t => (
+              <button key={t} onClick={() => setTeamFilter(t)}
+                className={`rounded-md px-3 py-1 text-xs font-medium capitalize transition-colors ${teamFilter === t ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>{t}</button>
+            ))}
           </div>
           <div className="space-y-1.5">
             {Array.from({ length: daysInMonth }).map((_, i) => {
@@ -255,7 +268,7 @@ export default function AdminPanel({
                       <select name="developer_id" defaultValue={shift?.developer_id ?? ''}
                         className="flex-1 rounded border px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-blue-500" autoFocus>
                         <option value="" disabled>Выберите разработчика</option>
-                        {developers.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                        {filteredDevs.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                       </select>
                       <button type="submit" className="rounded bg-blue-600 px-3 py-1 text-xs text-white hover:bg-blue-700">{shift ? 'Обновить' : 'Назначить'}</button>
                       {isEditing && <button type="button" onClick={() => setEditingDate(null)} className="text-xs text-gray-500 hover:text-gray-700">Отмена</button>}
@@ -270,18 +283,25 @@ export default function AdminPanel({
         </div>
       )}
 
-      {/* ── Vacations ── */}
       {tab === 'vacations' && (
         <div>
           <div className="mb-6 rounded-lg border bg-white p-4">
             <h3 className="mb-3 text-sm font-semibold">Добавить отпуск</h3>
+            <div className="mb-3 flex flex-wrap gap-1.5">
+              <button onClick={() => setTeamFilter('all')}
+                className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${teamFilter === 'all' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>Все</button>
+              {TEAMS.map(t => (
+                <button key={t} onClick={() => setTeamFilter(t)}
+                  className={`rounded-md px-3 py-1 text-xs font-medium capitalize transition-colors ${teamFilter === t ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>{t}</button>
+              ))}
+            </div>
             <form onSubmit={handleAddVacation} className="flex flex-wrap items-end gap-3">
               <div className="min-w-[200px] flex-1">
                 <label className="mb-1 block text-xs text-gray-500">Разработчик</label>
                 <select value={newVacation.developer_id} onChange={e => setNewVacation(v => ({ ...v, developer_id: e.target.value }))} required
                   className="w-full rounded border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500">
                   <option value="">Выберите</option>
-                  {developers.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  {filteredDevs.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                 </select>
               </div>
               <div>
@@ -328,13 +348,16 @@ export default function AdminPanel({
         </div>
       )}
 
-      {/* ── Developers ── */}
       {tab === 'developers' && (
         <div>
           <form onSubmit={handleAddDev} className="mb-6 flex gap-2">
             <input value={newDevName} onChange={e => setNewDevName(e.target.value)}
               placeholder="Имя разработчика"
               className="flex-1 rounded-lg border px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500" />
+            <select value={newDevTeam} onChange={e => setNewDevTeam(e.target.value as Team)}
+              className="rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500">
+              {TEAMS.map(t => <option key={t} value={t} className="capitalize">{t}</option>)}
+            </select>
             <button type="submit" className="flex items-center gap-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
               <Plus className="h-4 w-4" /> Добавить
             </button>
@@ -351,6 +374,13 @@ export default function AdminPanel({
                         <label className="mb-1 block text-xs text-gray-500">Имя</label>
                         <input name="name" defaultValue={d.name} required
                           className="w-full rounded border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500" />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs text-gray-500">Команда</label>
+                        <select name="team" defaultValue={d.team}
+                          className="w-full rounded border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500">
+                          {TEAMS.map(t => <option key={t} value={t} className="capitalize">{t}</option>)}
+                        </select>
                       </div>
                       <div>
                         <label className="mb-1 block text-xs text-gray-500">Порядок</label>
@@ -381,7 +411,10 @@ export default function AdminPanel({
                 ) : (
                   <div className="flex items-center gap-3">
                     <span className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-200 text-xs font-medium text-gray-600">{d.sort_order}</span>
-                    <span className="flex-1 text-sm font-medium">{d.name}</span>
+                    <span className="inline-flex items-center gap-2 flex-1 text-sm font-medium">
+                      {d.name}
+                      <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium uppercase text-gray-500">{d.team}</span>
+                    </span>
                     <div className="flex gap-3 text-xs text-gray-400">
                       {d.telegram && <span>Tg: {d.telegram}</span>}
                       {d.mattermost && <span>Mm: {d.mattermost}</span>}
