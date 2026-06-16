@@ -257,10 +257,13 @@ export default function AdminPanel({
               const isEditing = editingDate === dateStr
               const dateObj = new Date(year, month - 1, day)
               const isWeekend = dateObj.getDay() === 0 || dateObj.getDay() === 6
+              const dayNames = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб']
 
               return (
                 <div key={dateStr} className={`flex items-center gap-3 rounded-lg border bg-white px-4 py-2 ${isWeekend ? 'opacity-40' : ''}`}>
-                  <span className={`w-8 text-sm font-medium ${isWeekend ? 'text-gray-400' : 'text-gray-600'}`}>{day}</span>
+                  <span className={`flex w-12 items-center gap-1 text-sm font-medium ${isWeekend ? 'text-gray-400' : 'text-gray-600'}`}>
+                    {day} <span className="text-[10px] text-gray-400">{dayNames[dateObj.getDay()]}</span>
+                  </span>
                   {shift && !isEditing ? (
                     <>
                       <span className="flex-1 text-sm">{shift.developers.name}</span>
