@@ -2,6 +2,12 @@ export type Profile = {
   id: string
   name: string
   is_admin: boolean
+  created_at: string
+}
+
+export type Developer = {
+  id: string
+  name: string
   sort_order: number
   telegram: string | null
   mattermost: string | null
@@ -9,26 +15,20 @@ export type Profile = {
   created_at: string
 }
 
-export type DutyShift = {
+export type ShiftWithDeveloper = {
   id: string
-  user_id: string
+  developer_id: string
   date: string
   created_at: string
   updated_at: string
+  developers: { name: string }
 }
 
-export type ShiftWithProfile = DutyShift & {
-  profiles: { name: string }
-}
-
-export type Vacation = {
+export type VacationWithDeveloper = {
   id: string
-  user_id: string
+  developer_id: string
   start_date: string
   end_date: string
   created_at: string
-}
-
-export type VacationWithProfile = Vacation & {
-  profiles: { name: string }
+  developers: { name: string }
 }

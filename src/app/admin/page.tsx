@@ -16,11 +16,6 @@ export default async function AdminPage() {
 
   if (!profile?.is_admin) redirect('/dashboard')
 
-  const { data: profiles } = await supabase
-    .from('profiles')
-    .select('id, name')
-    .order('name', { ascending: true })
-
   const now = new Date()
   const year = now.getFullYear()
   const month = now.getMonth() + 1
@@ -29,12 +24,8 @@ export default async function AdminPage() {
     <>
       <Navbar profile={profile} />
       <main className="mx-auto max-w-4xl px-4 py-8">
-        <h1 className="mb-6 text-2xl font-bold">Управление дежурствами</h1>
-        <AdminPanel
-          year={year}
-          month={month}
-          profiles={profiles ?? []}
-        />
+        <h1 className="mb-6 text-2xl font-bold">Управление</h1>
+        <AdminPanel year={year} month={month} />
       </main>
     </>
   )

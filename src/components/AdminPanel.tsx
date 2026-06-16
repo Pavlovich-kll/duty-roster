@@ -3,12 +3,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { ChevronLeft, ChevronRight, Trash2, Plus, Users, CalendarDays, Palmtree } from 'lucide-react'
 import { createClient } from '@/lib/supabase-client'
-import { setShift, removeShift, autoAssignShifts, clearShiftsForMonth, addVacation, deleteVacation, updateProfile } from '@/app/actions'
-import type { Profile, ShiftWithProfile, VacationWithProfile } from '@/lib/types'
-
-function getDaysInMonth(year: number, month: number) {
-  return new Date(year, month, 0).getDate()
-}
+import { setShift, removeShift, autoAssignShifts, clearShiftsForMonth, addVacation, deleteVacation, addDeveloper, updateDeveloper, deleteDeveloper } from '@/app/actions'
+import type { Developer, ShiftWithDeveloper, VacationWithDeveloper } from '@/lib/types'
 
 const MONTHS = [
   'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
@@ -20,75 +16,77 @@ type Tab = 'shifts' | 'vacations' | 'developers'
 export default function AdminPanel({
   year: initialYear,
   month: initialMonth,
-  profiles,
 }: {
   year: number
   month: number
-  profiles: Pick<Profile, 'id' | 'name'>[]
 }) {
   const [tab, setTab] = useState<Tab>('shifts')
   const [year, setYear] = useState(initialYear)
   const [month, setMonth] = useState(initialMonth)
-  const [shifts, setShifts] = useState<ShiftWithProfile[]>([])
-  const [vacations, setVacations] = useState<VacationWithProfile[]>([])
+  const [shifts, setShifts] = useState<ShiftWithDeveloper[]>([])
+  const [vacations, setVacations] = useState<VacationWithDeveloper[]>([])
+  const [developers, setDevelopers] = useState<Developer[]>([])
   const [editingDate, setEditingDate] = useState<string | null>(null)
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null)
   const [autoAssignLoading, setAutoAssignLoading] = useState(false)
-  const [editingProfile, setEditingProfile] = useState<string | null>(null)
-  const [newVacation, setNewVacation] = useState({ user_id: '', start_date: '', end_date: '' })
-  const [fullProfiles, setFullProfiles] = useState<Profile[]>([])
+  const [editingDev, setEditingDev] = useState<string | null>(null)
+  const [newDevName, setNewDevName] = useState('')
+  const [newVacation, setNewVacation] = useState({ developer_id: '', start_date: '', end_date: '' })
   const supabase = createClient()
+
+  const showMsg = (text: string, ok: boolean) => {
+    setMsg({ text, ok })
+    setTimeout(() => setMsg(null), 3000)
+  }
+
+  const devMap = new Map(developers.map(d => [d.id, d]))
 
   // ── Fetch ──
   const fetchShifts = useCallback(async (y: number, m: number) => {
     const start = `${y}-${String(m).padStart(2, '0')}-01`
     const endDate = new Date(y, m, 0)
     const end = `${y}-${String(m).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}`
-
     const { data } = await supabase
       .from('duty_shifts')
-      .select('id, user_id, date, profiles(name)')
+      .select('id, developer_id, date, developers(name)')
       .gte('date', start).lte('date', end)
       .order('date', { ascending: true })
-
-    setShifts((data ?? []) as unknown as ShiftWithProfile[])
+    setShifts((data ?? []) as any)
   }, [supabase])
 
   const fetchVacations = useCallback(async (y: number, m: number) => {
     const start = `${y}-${String(m).padStart(2, '0')}-01`
     const endDate = new Date(y, m, 0)
     const end = `${y}-${String(m).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}`
-
     const { data } = await supabase
       .from('vacations')
-      .select('id, user_id, start_date, end_date, profiles(name)')
+      .select('id, developer_id, start_date, end_date, developers(name)')
       .lte('start_date', end).gte('end_date', start)
       .order('start_date', { ascending: true })
-
-    setVacations((data ?? []) as unknown as VacationWithProfile[])
+    setVacations((data ?? []) as any)
   }, [supabase])
 
-  const fetchFullProfiles = useCallback(async () => {
+  const fetchDevelopers = useCallback(async () => {
     const { data } = await supabase
-      .from('profiles')
+      .from('developers')
       .select('*')
       .order('sort_order', { ascending: true })
       .order('name', { ascending: true })
-    setFullProfiles(data ?? [])
+    setDevelopers(data ?? [])
   }, [supabase])
 
   useEffect(() => { fetchShifts(year, month) }, [year, month, fetchShifts])
   useEffect(() => { fetchVacations(year, month) }, [year, month, fetchVacations])
-  useEffect(() => { if (tab === 'developers') fetchFullProfiles() }, [tab, fetchFullProfiles])
+  useEffect(() => { if (tab === 'developers') fetchDevelopers() }, [tab, fetchDevelopers])
 
   useEffect(() => {
     const channel = supabase.channel('admin-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'duty_shifts' }, () => fetchShifts(year, month))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'vacations' }, () => fetchVacations(year, month))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => { if (tab === 'developers') fetchFullProfiles() })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'developers' }, () => { if (tab === 'developers') fetchDevelopers(); fetchShifts(year, month); fetchVacations(year, month) })
       .subscribe()
     return () => { supabase.removeChannel(channel) }
-  }, [year, month, supabase, fetchShifts, fetchVacations, fetchFullProfiles, tab])
+  }, [year, month, supabase, fetchShifts, fetchVacations, fetchDevelopers, tab])
 
   const prevMonth = () => {
     if (month === 1) { setYear(y => y - 1); setMonth(12) }
@@ -97,11 +95,6 @@ export default function AdminPanel({
   const nextMonth = () => {
     if (month === 12) { setYear(y => y + 1); setMonth(1) }
     else setMonth(m => m + 1)
-  }
-
-  const showMsg = (text: string, ok: boolean) => {
-    setMsg({ text, ok })
-    setTimeout(() => setMsg(null), 3000)
   }
 
   // ── Handlers ──
@@ -132,15 +125,42 @@ export default function AdminPanel({
     else { fetchShifts(year, month); showMsg('Удалено', true) }
   }
 
+  const handleAddDev = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!newDevName.trim()) return
+    const fd = new FormData()
+    fd.set('name', newDevName.trim())
+    const res = await addDeveloper(fd)
+    if (res.error) showMsg(res.error, false)
+    else { setNewDevName(''); fetchDevelopers(); showMsg('Добавлен', true) }
+  }
+
+  const handleUpdateDev = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const fd = new FormData(e.target as HTMLFormElement)
+    const res = await updateDeveloper(fd)
+    if (res.error) showMsg(res.error, false)
+    else { setEditingDev(null); fetchDevelopers(); showMsg('Сохранено', true) }
+  }
+
+  const handleDeleteDev = async (id: string) => {
+    if (!confirm('Удалить разработчика?')) return
+    const fd = new FormData()
+    fd.set('id', id)
+    const res = await deleteDeveloper(fd)
+    if (res.error) showMsg(res.error, false)
+    else { fetchDevelopers(); showMsg('Удалён', true) }
+  }
+
   const handleAddVacation = async (e: React.FormEvent) => {
     e.preventDefault()
     const fd = new FormData()
-    fd.set('user_id', newVacation.user_id)
+    fd.set('developer_id', newVacation.developer_id)
     fd.set('start_date', newVacation.start_date)
     fd.set('end_date', newVacation.end_date)
     const res = await addVacation(fd)
     if (res.error) showMsg(res.error, false)
-    else { setNewVacation({ user_id: '', start_date: '', end_date: '' }); fetchVacations(year, month); showMsg('Отпуск добавлен', true) }
+    else { setNewVacation({ developer_id: '', start_date: '', end_date: '' }); fetchVacations(year, month); showMsg('Отпуск добавлен', true) }
   }
 
   const handleDeleteVacation = async (formData: FormData) => {
@@ -149,22 +169,9 @@ export default function AdminPanel({
     else { fetchVacations(year, month); showMsg('Отпуск удалён', true) }
   }
 
-  const handleUpdateProfile = async (e: React.FormEvent) => {
-    e.preventDefault()
-    const fd = new FormData(e.target as HTMLFormElement)
-    try {
-      await updateProfile(fd)
-      setEditingProfile(null)
-      fetchFullProfiles()
-      showMsg('Профиль обновлён', true)
-    } catch (err: any) {
-      showMsg(err.message, false)
-    }
-  }
-
   // ── Shift map ──
-  const daysInMonth = getDaysInMonth(year, month)
-  const shiftMap = new Map<string, ShiftWithProfile>()
+  const daysInMonth = new Date(year, month, 0).getDate()
+  const shiftMap = new Map<string, ShiftWithDeveloper>()
   shifts.forEach(s => shiftMap.set(s.date, s))
 
   // ── Tabs ──
@@ -176,20 +183,14 @@ export default function AdminPanel({
 
   return (
     <div>
-      {/* Tabs */}
       <div className="mb-6 flex gap-1 rounded-lg bg-gray-100 p-1">
         {tabs.map(t => {
           const Icon = t.icon
           return (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              className={`flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition ${
-                tab === t.key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
-              }`}
+            <button key={t.key} onClick={() => setTab(t.key)}
+              className={`flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition ${tab === t.key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
             >
-              <Icon className="h-4 w-4" />
-              {t.label}
+              <Icon className="h-4 w-4" /> {t.label}
             </button>
           )
         })}
@@ -201,35 +202,24 @@ export default function AdminPanel({
         </div>
       )}
 
-      {/* ── Tab: Shifts ── */}
+      {/* ── Shifts ── */}
       {tab === 'shifts' && (
         <div>
           <div className="mb-4 flex items-center justify-between">
-            <button onClick={prevMonth} className="rounded-lg p-2 hover:bg-gray-200">
-              <ChevronLeft className="h-5 w-5" />
-            </button>
+            <button onClick={prevMonth} className="rounded-lg p-2 hover:bg-gray-200"><ChevronLeft className="h-5 w-5" /></button>
             <h2 className="text-lg font-semibold">{MONTHS[month - 1]} {year}</h2>
-            <button onClick={nextMonth} className="rounded-lg p-2 hover:bg-gray-200">
-              <ChevronRight className="h-5 w-5" />
-            </button>
+            <button onClick={nextMonth} className="rounded-lg p-2 hover:bg-gray-200"><ChevronRight className="h-5 w-5" /></button>
           </div>
-
           <div className="mb-4 flex gap-2">
-            <button
-              onClick={handleAutoAssign}
-              disabled={autoAssignLoading}
-              className="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
-            >
+            <button onClick={handleAutoAssign} disabled={autoAssignLoading}
+              className="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50">
               {autoAssignLoading ? 'Назначение...' : 'Авто-назначение'}
             </button>
-            <button
-              onClick={handleClearMonth}
-              className="rounded-lg border border-red-300 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
-            >
+            <button onClick={handleClearMonth}
+              className="rounded-lg border border-red-300 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50">
               Очистить месяц
             </button>
           </div>
-
           <div className="space-y-1.5">
             {Array.from({ length: daysInMonth }).map((_, i) => {
               const day = i + 1
@@ -240,58 +230,31 @@ export default function AdminPanel({
               const isWeekend = dateObj.getDay() === 0 || dateObj.getDay() === 6
 
               return (
-                <div
-                  key={dateStr}
-                  className={`flex items-center gap-3 rounded-lg border bg-white px-4 py-2 ${
-                    isWeekend ? 'opacity-40' : ''
-                  }`}
-                >
-                  <span className={`w-8 text-sm font-medium ${isWeekend ? 'text-gray-400' : 'text-gray-600'}`}>
-                    {day}
-                  </span>
-
+                <div key={dateStr} className={`flex items-center gap-3 rounded-lg border bg-white px-4 py-2 ${isWeekend ? 'opacity-40' : ''}`}>
+                  <span className={`w-8 text-sm font-medium ${isWeekend ? 'text-gray-400' : 'text-gray-600'}`}>{day}</span>
                   {shift && !isEditing ? (
                     <>
-                      <span className="flex-1 text-sm">{shift.profiles.name}</span>
+                      <span className="flex-1 text-sm">{shift.developers.name}</span>
                       {!isWeekend && (
                         <>
-                          <button onClick={() => setEditingDate(dateStr)} className="text-xs text-blue-600 hover:text-blue-800">
-                            Изменить
-                          </button>
+                          <button onClick={() => setEditingDate(dateStr)} className="text-xs text-blue-600 hover:text-blue-800">Изменить</button>
                           <form action={handleRemoveShift}>
                             <input type="hidden" name="id" value={shift.id} />
-                            <button type="submit" className="rounded p-1 text-red-500 hover:bg-red-50">
-                              <Trash2 className="h-4 w-4" />
-                            </button>
+                            <button type="submit" className="rounded p-1 text-red-500 hover:bg-red-50"><Trash2 className="h-4 w-4" /></button>
                           </form>
                         </>
                       )}
                     </>
                   ) : !isWeekend ? (
-                    <form
-                      action={handleSetShift}
-                      className="flex flex-1 items-center gap-2"
-                    >
+                    <form action={handleSetShift} className="flex flex-1 items-center gap-2">
                       <input type="hidden" name="date" value={dateStr} />
-                      <select
-                        name="user_id"
-                        defaultValue={shift?.user_id ?? ''}
-                        className="flex-1 rounded border px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                        autoFocus
-                      >
+                      <select name="developer_id" defaultValue={shift?.developer_id ?? ''}
+                        className="flex-1 rounded border px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-blue-500" autoFocus>
                         <option value="" disabled>Выберите разработчика</option>
-                        {profiles.map(p => (
-                          <option key={p.id} value={p.id}>{p.name}</option>
-                        ))}
+                        {developers.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                       </select>
-                      <button type="submit" className="rounded bg-blue-600 px-3 py-1 text-xs text-white hover:bg-blue-700">
-                        {shift ? 'Обновить' : 'Назначить'}
-                      </button>
-                      {isEditing && (
-                        <button type="button" onClick={() => setEditingDate(null)} className="text-xs text-gray-500 hover:text-gray-700">
-                          Отмена
-                        </button>
-                      )}
+                      <button type="submit" className="rounded bg-blue-600 px-3 py-1 text-xs text-white hover:bg-blue-700">{shift ? 'Обновить' : 'Назначить'}</button>
+                      {isEditing && <button type="button" onClick={() => setEditingDate(null)} className="text-xs text-gray-500 hover:text-gray-700">Отмена</button>}
                     </form>
                   ) : (
                     <span className="flex-1 text-xs text-gray-400">Выходной</span>
@@ -303,7 +266,7 @@ export default function AdminPanel({
         </div>
       )}
 
-      {/* ── Tab: Vacations ── */}
+      {/* ── Vacations ── */}
       {tab === 'vacations' && (
         <div>
           <div className="mb-6 rounded-lg border bg-white p-4">
@@ -311,55 +274,34 @@ export default function AdminPanel({
             <form onSubmit={handleAddVacation} className="flex flex-wrap items-end gap-3">
               <div className="min-w-[200px] flex-1">
                 <label className="mb-1 block text-xs text-gray-500">Разработчик</label>
-                <select
-                  value={newVacation.user_id}
-                  onChange={e => setNewVacation(v => ({ ...v, user_id: e.target.value }))}
-                  required
-                  className="w-full rounded border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                >
+                <select value={newVacation.developer_id} onChange={e => setNewVacation(v => ({ ...v, developer_id: e.target.value }))} required
+                  className="w-full rounded border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500">
                   <option value="">Выберите</option>
-                  {profiles.map(p => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
+                  {developers.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                 </select>
               </div>
               <div>
                 <label className="mb-1 block text-xs text-gray-500">Начало</label>
-                <input
-                  type="date" required
-                  value={newVacation.start_date}
+                <input type="date" required value={newVacation.start_date}
                   onChange={e => setNewVacation(v => ({ ...v, start_date: e.target.value }))}
-                  className="rounded border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                />
+                  className="rounded border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
                 <label className="mb-1 block text-xs text-gray-500">Конец</label>
-                <input
-                  type="date" required
-                  value={newVacation.end_date}
+                <input type="date" required value={newVacation.end_date}
                   onChange={e => setNewVacation(v => ({ ...v, end_date: e.target.value }))}
-                  className="rounded border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                />
+                  className="rounded border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
-              <button
-                type="submit"
-                className="flex items-center gap-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-              >
+              <button type="submit" className="flex items-center gap-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
                 <Plus className="h-4 w-4" /> Добавить
               </button>
             </form>
           </div>
-
           <div className="flex items-center justify-between mb-3">
-            <button onClick={prevMonth} className="rounded-lg p-2 hover:bg-gray-200">
-              <ChevronLeft className="h-5 w-5" />
-            </button>
+            <button onClick={prevMonth} className="rounded-lg p-2 hover:bg-gray-200"><ChevronLeft className="h-5 w-5" /></button>
             <h2 className="text-lg font-semibold">{MONTHS[month - 1]} {year}</h2>
-            <button onClick={nextMonth} className="rounded-lg p-2 hover:bg-gray-200">
-              <ChevronRight className="h-5 w-5" />
-            </button>
+            <button onClick={nextMonth} className="rounded-lg p-2 hover:bg-gray-200"><ChevronRight className="h-5 w-5" /></button>
           </div>
-
           {vacations.length === 0 ? (
             <p className="text-sm text-gray-500">Нет отпусков в этом месяце</p>
           ) : (
@@ -367,15 +309,13 @@ export default function AdminPanel({
               {vacations.map(v => (
                 <div key={v.id} className="flex items-center gap-3 rounded-lg border bg-white px-4 py-3">
                   <Palmtree className="h-4 w-4 text-amber-500" />
-                  <span className="flex-1 text-sm font-medium">{v.profiles.name}</span>
+                  <span className="flex-1 text-sm font-medium">{v.developers.name}</span>
                   <span className="text-sm text-gray-600">
                     {new Date(v.start_date).toLocaleDateString('ru-RU')} — {new Date(v.end_date).toLocaleDateString('ru-RU')}
                   </span>
                   <form action={handleDeleteVacation}>
                     <input type="hidden" name="id" value={v.id} />
-                    <button type="submit" className="rounded p-1 text-red-500 hover:bg-red-50">
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                    <button type="submit" className="rounded p-1 text-red-500 hover:bg-red-50"><Trash2 className="h-4 w-4" /></button>
                   </form>
                 </div>
               ))}
@@ -384,64 +324,67 @@ export default function AdminPanel({
         </div>
       )}
 
-      {/* ── Tab: Developers ── */}
+      {/* ── Developers ── */}
       {tab === 'developers' && (
         <div>
-          <div className="mb-3 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-gray-500">Порядок разработчиков для ротации дежурств</h3>
-          </div>
+          <form onSubmit={handleAddDev} className="mb-6 flex gap-2">
+            <input value={newDevName} onChange={e => setNewDevName(e.target.value)}
+              placeholder="Имя разработчика"
+              className="flex-1 rounded-lg border px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500" />
+            <button type="submit" className="flex items-center gap-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+              <Plus className="h-4 w-4" /> Добавить
+            </button>
+          </form>
 
           <div className="space-y-2">
-            {fullProfiles.map((p, idx) => (
-              <div key={p.id} className="rounded-lg border bg-white px-4 py-3">
-                {editingProfile === p.id ? (
-                  <form onSubmit={handleUpdateProfile} className="space-y-3">
-                    <input type="hidden" name="id" value={p.id} />
+            {developers.map((d, idx) => (
+              <div key={d.id} className="rounded-lg border bg-white px-4 py-3">
+                {editingDev === d.id ? (
+                  <form onSubmit={handleUpdateDev} className="space-y-3">
+                    <input type="hidden" name="id" value={d.id} />
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <label className="mb-1 block text-xs text-gray-500">Имя</label>
-                        <input name="name" defaultValue={p.name} required className="w-full rounded border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500" />
+                        <input name="name" defaultValue={d.name} required
+                          className="w-full rounded border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500" />
                       </div>
                       <div>
                         <label className="mb-1 block text-xs text-gray-500">Порядок</label>
-                        <input name="sort_order" type="number" defaultValue={p.sort_order} className="w-full rounded border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500" />
+                        <input name="sort_order" type="number" defaultValue={d.sort_order}
+                          className="w-full rounded border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500" />
                       </div>
                       <div>
                         <label className="mb-1 block text-xs text-gray-500">Telegram</label>
-                        <input name="telegram" defaultValue={p.telegram ?? ''} placeholder="@username" className="w-full rounded border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500" />
+                        <input name="telegram" defaultValue={d.telegram ?? ''} placeholder="@username"
+                          className="w-full rounded border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500" />
                       </div>
                       <div>
                         <label className="mb-1 block text-xs text-gray-500">Mattermost</label>
-                        <input name="mattermost" defaultValue={p.mattermost ?? ''} placeholder="@username" className="w-full rounded border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500" />
+                        <input name="mattermost" defaultValue={d.mattermost ?? ''} placeholder="@username"
+                          className="w-full rounded border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500" />
                       </div>
                       <div>
                         <label className="mb-1 block text-xs text-gray-500">Телефон</label>
-                        <input name="phone" defaultValue={p.phone ?? ''} placeholder="+7..." className="w-full rounded border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500" />
+                        <input name="phone" defaultValue={d.phone ?? ''} placeholder="+7..."
+                          className="w-full rounded border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500" />
                       </div>
                     </div>
                     <div className="flex gap-2">
-                      <button type="submit" className="rounded bg-blue-600 px-4 py-1.5 text-sm text-white hover:bg-blue-700">
-                        Сохранить
-                      </button>
-                      <button type="button" onClick={() => setEditingProfile(null)} className="rounded border px-4 py-1.5 text-sm text-gray-600 hover:bg-gray-50">
-                        Отмена
-                      </button>
+                      <button type="submit" className="rounded bg-blue-600 px-4 py-1.5 text-sm text-white hover:bg-blue-700">Сохранить</button>
+                      <button type="button" onClick={() => setEditingDev(null)} className="rounded border px-4 py-1.5 text-sm text-gray-600 hover:bg-gray-50">Отмена</button>
                     </div>
                   </form>
                 ) : (
                   <div className="flex items-center gap-3">
-                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-200 text-xs font-medium text-gray-600">
-                      {p.sort_order}
-                    </span>
-                    <span className="flex-1 text-sm font-medium">{p.name}</span>
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-200 text-xs font-medium text-gray-600">{d.sort_order}</span>
+                    <span className="flex-1 text-sm font-medium">{d.name}</span>
                     <div className="flex gap-3 text-xs text-gray-400">
-                      {p.telegram && <span>Tg: {p.telegram}</span>}
-                      {p.mattermost && <span>Mm: {p.mattermost}</span>}
-                      {p.phone && <span>{p.phone}</span>}
+                      {d.telegram && <span>Tg: {d.telegram}</span>}
+                      {d.mattermost && <span>Mm: {d.mattermost}</span>}
+                      {d.phone && <span>{d.phone}</span>}
                     </div>
-                    <button onClick={() => setEditingProfile(p.id)} className="text-xs text-blue-600 hover:text-blue-800">
-                      Редактировать
-                    </button>
+                    <button onClick={() => setEditingDev(d.id)} className="text-xs text-blue-600 hover:text-blue-800">Ред.</button>
+                    <button onClick={() => handleDeleteDev(d.id)} className="text-xs text-red-500 hover:text-red-700">Удал.</button>
                   </div>
                 )}
               </div>
