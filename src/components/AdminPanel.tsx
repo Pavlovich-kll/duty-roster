@@ -16,16 +16,18 @@ type Tab = 'shifts' | 'vacations' | 'developers'
 export default function AdminPanel({
   year: initialYear,
   month: initialMonth,
+  initialDevelopers,
 }: {
   year: number
   month: number
+  initialDevelopers: Developer[]
 }) {
   const [tab, setTab] = useState<Tab>('shifts')
   const [year, setYear] = useState(initialYear)
   const [month, setMonth] = useState(initialMonth)
   const [shifts, setShifts] = useState<ShiftWithDeveloper[]>([])
   const [vacations, setVacations] = useState<VacationWithDeveloper[]>([])
-  const [developers, setDevelopers] = useState<Developer[]>([])
+  const [developers, setDevelopers] = useState(initialDevelopers)
   const [editingDate, setEditingDate] = useState<string | null>(null)
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null)
   const [autoAssignLoading, setAutoAssignLoading] = useState(false)
@@ -38,8 +40,6 @@ export default function AdminPanel({
     setMsg({ text, ok })
     setTimeout(() => setMsg(null), 3000)
   }
-
-  const devMap = new Map(developers.map(d => [d.id, d]))
 
   // ── Fetch ──
   const fetchShifts = useCallback(async (y: number, m: number) => {
@@ -66,27 +66,22 @@ export default function AdminPanel({
     setVacations((data ?? []) as any)
   }, [supabase])
 
-  const fetchDevelopers = useCallback(async () => {
-    const { data } = await supabase
-      .from('developers')
-      .select('*')
-      .order('sort_order', { ascending: true })
-      .order('name', { ascending: true })
-    setDevelopers(data ?? [])
-  }, [supabase])
-
   useEffect(() => { fetchShifts(year, month) }, [year, month, fetchShifts])
   useEffect(() => { fetchVacations(year, month) }, [year, month, fetchVacations])
-  useEffect(() => { fetchDevelopers() }, [fetchDevelopers])
 
   useEffect(() => {
     const channel = supabase.channel('admin-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'duty_shifts' }, () => fetchShifts(year, month))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'vacations' }, () => fetchVacations(year, month))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'developers' }, () => { if (tab === 'developers') fetchDevelopers(); fetchShifts(year, month); fetchVacations(year, month) })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'developers' }, async () => {
+        const { data } = await supabase.from('developers').select('*').order('sort_order').order('name')
+        setDevelopers(data ?? [])
+        fetchShifts(year, month)
+        fetchVacations(year, month)
+      })
       .subscribe()
     return () => { supabase.removeChannel(channel) }
-  }, [year, month, supabase, fetchShifts, fetchVacations, fetchDevelopers, tab])
+  }, [year, month, supabase, fetchShifts, fetchVacations])
 
   const prevMonth = () => {
     if (month === 1) { setYear(y => y - 1); setMonth(12) }
@@ -101,8 +96,8 @@ export default function AdminPanel({
   const handleAutoAssign = async () => {
     setAutoAssignLoading(true)
     const res = await autoAssignShifts(year, month)
-    if (res.error) showMsg(res.error, false)
-    else showMsg(`Назначено ${res.count} дежурств`, true)
+    if ('error' in res) showMsg(res.error || 'Ошибка', false)
+    else { fetchShifts(year, month); showMsg(`Назначено ${res.count} дежурств`, true) }
     setAutoAssignLoading(false)
   }
 
@@ -125,6 +120,11 @@ export default function AdminPanel({
     else { fetchShifts(year, month); showMsg('Удалено', true) }
   }
 
+  const refreshDevs = useCallback(async () => {
+    const { data } = await supabase.from('developers').select('*').order('sort_order').order('name')
+    setDevelopers(data ?? [])
+  }, [supabase])
+
   const handleAddDev = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!newDevName.trim()) return
@@ -132,7 +132,7 @@ export default function AdminPanel({
     fd.set('name', newDevName.trim())
     const res = await addDeveloper(fd)
     if (res.error) showMsg(res.error, false)
-    else { setNewDevName(''); fetchDevelopers(); showMsg('Добавлен', true) }
+    else { setNewDevName(''); refreshDevs(); showMsg('Добавлен', true) }
   }
 
   const handleUpdateDev = async (e: React.FormEvent) => {
@@ -140,7 +140,7 @@ export default function AdminPanel({
     const fd = new FormData(e.target as HTMLFormElement)
     const res = await updateDeveloper(fd)
     if (res.error) showMsg(res.error, false)
-    else { setEditingDev(null); fetchDevelopers(); showMsg('Сохранено', true) }
+    else { setEditingDev(null); refreshDevs(); showMsg('Сохранено', true) }
   }
 
   const handleDeleteDev = async (id: string) => {
@@ -149,7 +149,7 @@ export default function AdminPanel({
     fd.set('id', id)
     const res = await deleteDeveloper(fd)
     if (res.error) showMsg(res.error, false)
-    else { fetchDevelopers(); showMsg('Удалён', true) }
+    else { refreshDevs(); showMsg('Удалён', true) }
   }
 
   const handleAddVacation = async (e: React.FormEvent) => {
@@ -160,7 +160,11 @@ export default function AdminPanel({
     fd.set('end_date', newVacation.end_date)
     const res = await addVacation(fd)
     if (res.error) showMsg(res.error, false)
-    else { setNewVacation({ developer_id: '', start_date: '', end_date: '' }); fetchVacations(year, month); showMsg('Отпуск добавлен', true) }
+    else {
+      setNewVacation({ developer_id: '', start_date: '', end_date: '' })
+      fetchVacations(year, month)
+      showMsg('Отпуск добавлен', true)
+    }
   }
 
   const handleDeleteVacation = async (formData: FormData) => {

@@ -115,7 +115,6 @@ export async function removeShift(formData: FormData) {
   if (!id) return { error: 'Missing id' }
 
   const { error } = await supabase.from('duty_shifts').delete().eq('id', id)
-  if (error) return { error: error.message }
   revalidatePath('/dashboard')
   revalidatePath('/admin')
   return { success: true }
@@ -273,7 +272,6 @@ export async function deleteVacation(formData: FormData) {
   if (!id) return { error: 'Missing id' }
 
   const { error } = await supabase.from('vacations').delete().eq('id', id)
-  if (error) return { error: error.message }
   revalidatePath('/dashboard')
   revalidatePath('/admin')
   return { success: true }
