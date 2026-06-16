@@ -77,7 +77,7 @@ export default function AdminPanel({
 
   useEffect(() => { fetchShifts(year, month) }, [year, month, fetchShifts])
   useEffect(() => { fetchVacations(year, month) }, [year, month, fetchVacations])
-  useEffect(() => { if (tab === 'developers') fetchDevelopers() }, [tab, fetchDevelopers])
+  useEffect(() => { fetchDevelopers() }, [fetchDevelopers])
 
   useEffect(() => {
     const channel = supabase.channel('admin-changes')

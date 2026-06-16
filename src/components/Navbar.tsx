@@ -1,17 +1,14 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase-client'
 import type { Profile } from '@/lib/types'
 
 export default function Navbar({ profile }: { profile: Profile | null }) {
-  const router = useRouter()
   const supabase = createClient()
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
-    router.push('/login')
-    router.refresh()
+    window.location.href = '/login'
   }
 
   return (
