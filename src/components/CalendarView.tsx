@@ -108,6 +108,42 @@ export default function CalendarView({
         </button>
       </div>
 
+      <div className="mb-4 rounded-lg border bg-white p-3 text-sm">
+        {(() => {
+          const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+          const isCurrentMonth = year === today.getFullYear() && month === today.getMonth() + 1
+          const currentShift = isCurrentMonth ? shiftMap.get(todayStr) : undefined
+          const currentVacations = isCurrentMonth ? (vacationByDate.get(todayStr) ?? []) : []
+          return (
+            <>
+              <span className="mb-1.5 block text-xs font-semibold text-gray-500">СЕГОДНЯ</span>
+              {currentShift ? (
+                <div className="flex items-center gap-2">
+                  <span className="inline-block h-2.5 w-2.5 rounded bg-blue-400" />
+                  <span className="font-medium text-blue-800">{currentShift.name}</span>
+                  <span className="rounded bg-gray-100 px-1 py-0.5 text-[10px] font-medium uppercase text-gray-500">{currentShift.team}</span>
+                  <span className="text-gray-400">дежурный</span>
+                </div>
+              ) : (
+                <p className="text-gray-400">Дежурный не назначен</p>
+              )}
+              {currentVacations.length > 0 && (
+                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+                  {currentVacations.map(d => (
+                    <div key={d.name} className="flex items-center gap-1.5">
+                      <span className="inline-block h-2.5 w-2.5 rounded bg-amber-400" />
+                      <span className="text-amber-800">{d.name}</span>
+                      <span className="rounded bg-gray-100 px-1 py-0.5 text-[10px] font-medium uppercase text-gray-500">{d.team}</span>
+                      <span className="text-gray-400">в отпуске</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )
+        })()}
+      </div>
+
       <div className="grid grid-cols-7 gap-px rounded-xl border bg-gray-200 overflow-hidden">
         {DAYS.map(d => (
           <div key={d} className="bg-gray-100 px-2 py-2 text-center text-xs font-semibold text-gray-600">{d}</div>
