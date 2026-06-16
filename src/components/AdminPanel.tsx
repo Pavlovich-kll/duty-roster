@@ -184,6 +184,18 @@ export default function AdminPanel({
 
   const filteredDevs = teamFilter === 'all' ? developers : developers.filter(d => d.team === teamFilter)
 
+  const filteredVacations = teamFilter === 'all'
+    ? vacations
+    : vacations.filter(v => developers.find(d => d.id === v.developer_id)?.team === teamFilter)
+
+  const filteredShiftMap = teamFilter === 'all'
+    ? shiftMap
+    : new Map(
+        Array.from(shiftMap.entries()).filter(([_, s]) =>
+          developers.find(d => d.id === s.developer_id)?.team === teamFilter
+        )
+      )
+
   // ── Tabs ──
   const tabs: { key: Tab; label: string; icon: any }[] = [
     { key: 'shifts', label: 'Дежурства', icon: CalendarDays },
@@ -241,7 +253,7 @@ export default function AdminPanel({
             {Array.from({ length: daysInMonth }).map((_, i) => {
               const day = i + 1
               const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-              const shift = shiftMap.get(dateStr)
+              const shift = filteredShiftMap.get(dateStr)
               const isEditing = editingDate === dateStr
               const dateObj = new Date(year, month - 1, day)
               const isWeekend = dateObj.getDay() === 0 || dateObj.getDay() === 6
@@ -326,11 +338,11 @@ export default function AdminPanel({
             <h2 className="text-lg font-semibold">{MONTHS[month - 1]} {year}</h2>
             <button onClick={nextMonth} className="rounded-lg p-2 hover:bg-gray-200"><ChevronRight className="h-5 w-5" /></button>
           </div>
-          {vacations.length === 0 ? (
+          {filteredVacations.length === 0 ? (
             <p className="text-sm text-gray-500">Нет отпусков в этом месяце</p>
           ) : (
             <div className="space-y-2">
-              {vacations.map(v => (
+              {filteredVacations.map(v => (
                 <div key={v.id} className="flex items-center gap-3 rounded-lg border bg-white px-4 py-3">
                   <Palmtree className="h-4 w-4 text-amber-500" />
                   <span className="flex-1 text-sm font-medium">{v.developers.name}</span>
@@ -363,8 +375,16 @@ export default function AdminPanel({
             </button>
           </form>
 
+          <div className="mb-3 flex flex-wrap gap-1.5">
+            <button onClick={() => setTeamFilter('all')}
+              className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${teamFilter === 'all' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>Все</button>
+            {TEAMS.map(t => (
+              <button key={t} onClick={() => setTeamFilter(t)}
+                className={`rounded-md px-3 py-1 text-xs font-medium capitalize transition-colors ${teamFilter === t ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>{t}</button>
+            ))}
+          </div>
           <div className="space-y-2">
-            {developers.map((d, idx) => (
+            {filteredDevs.map((d, idx) => (
               <div key={d.id} className="rounded-lg border bg-white px-4 py-3">
                 {editingDev === d.id ? (
                   <form onSubmit={handleUpdateDev} className="space-y-3">
