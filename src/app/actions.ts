@@ -122,7 +122,7 @@ export async function removeShift(formData: FormData) {
   return { success: true }
 }
 
-export async function clearShiftsForMonth(year: number, month: number) {
+export async function clearShiftsForMonth(year: number, month: number, teamFilter: string = 'all') {
   const supabase = await createClient()
   await assertAdmin(supabase)
 
@@ -130,10 +130,15 @@ export async function clearShiftsForMonth(year: number, month: number) {
   const endDate = new Date(year, month, 0)
   const end = `${year}-${String(month).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}`
 
-  const { error } = await supabase
-    .from('duty_shifts')
-    .delete()
-    .gte('date', start).lte('date', end)
+  let query = supabase.from('duty_shifts').delete().gte('date', start).lte('date', end)
+  if (teamFilter !== 'all') {
+    const { data: devs } = await supabase.from('developers').select('id').eq('team', teamFilter)
+    const ids = (devs ?? []).map(d => d.id)
+    if (ids.length > 0) query = query.in('developer_id', ids)
+    else return
+  }
+
+  const { error } = await query
 
   if (error) throw new Error(error.message)
   revalidatePath('/dashboard')

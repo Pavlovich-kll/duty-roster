@@ -105,10 +105,11 @@ export default function AdminPanel({
   }
 
   const handleClearMonth = async () => {
-    if (!confirm('Очистить все дежурства за этот месяц?')) return
-    await clearShiftsForMonth(year, month)
+    const label = teamFilter === 'all' ? 'всех' : teamFilter
+    if (!confirm(`Очистить дежурства за этот месяц для платформы "${label}"?`)) return
+    await clearShiftsForMonth(year, month, teamFilter)
     fetchShifts(year, month)
-    showMsg('Месяц очищен', true)
+    showMsg(`Дежурства для "${label}" очищены`, true)
   }
 
   const handleAddShift = async (formData: FormData) => {
