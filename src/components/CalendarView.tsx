@@ -82,8 +82,11 @@ export default function CalendarView({
   const firstDay = getFirstDayOfMonth(year, month)
   const today = new Date()
 
-  const shiftMap = new Map<string, { name: string; team: string }>()
-  shifts.forEach(s => shiftMap.set(s.date, s.developers as { name: string; team: string }))
+  const shiftsByDate = new Map<string, { name: string; team: string; id: string }[]>()
+  shifts.forEach(s => {
+    if (!shiftsByDate.has(s.date)) shiftsByDate.set(s.date, [])
+    shiftsByDate.get(s.date)!.push({ ...(s.developers as { name: string; team: string }), id: s.id })
+  })
 
   const vacationByDate = new Map<string, { name: string; team: string }[]>()
   vacations.forEach(v => {
@@ -112,17 +115,21 @@ export default function CalendarView({
         {(() => {
           const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
           const isCurrentMonth = year === today.getFullYear() && month === today.getMonth() + 1
-          const currentShift = isCurrentMonth ? shiftMap.get(todayStr) : undefined
+          const currentShifts = isCurrentMonth ? (shiftsByDate.get(todayStr) ?? []) : []
           const currentVacations = isCurrentMonth ? (vacationByDate.get(todayStr) ?? []) : []
           return (
             <>
               <span className="mb-1.5 block text-xs font-semibold text-gray-500">СЕГОДНЯ</span>
-              {currentShift ? (
-                <div className="flex items-center gap-2">
-                  <span className="inline-block h-2.5 w-2.5 rounded bg-blue-400" />
-                  <span className="font-medium text-blue-800">{currentShift.name}</span>
-                  <span className="rounded bg-gray-100 px-1 py-0.5 text-[10px] font-medium uppercase text-gray-500">{currentShift.team}</span>
-                  <span className="text-gray-400">дежурный</span>
+              {currentShifts.length > 0 ? (
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  {currentShifts.map(s => (
+                    <div key={s.id} className="flex items-center gap-1.5">
+                      <span className="inline-block h-2.5 w-2.5 rounded bg-blue-400" />
+                      <span className="font-medium text-blue-800">{s.name}</span>
+                      <span className="rounded bg-gray-100 px-1 py-0.5 text-[10px] font-medium uppercase text-gray-500">{s.team}</span>
+                      <span className="text-gray-400">дежурный</span>
+                    </div>
+                  ))}
                 </div>
               ) : (
                 <p className="text-gray-400">Дежурный не назначен</p>
@@ -154,7 +161,7 @@ export default function CalendarView({
         {Array.from({ length: daysInMonth }).map((_, i) => {
           const day = i + 1
           const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-          const assigned = shiftMap.get(dateStr)
+          const dayShifts = shiftsByDate.get(dateStr) ?? []
           const onVacation = vacationByDate.get(dateStr)
           const dateObj = new Date(year, month - 1, day)
           const isWeekend = dateObj.getDay() === 0 || dateObj.getDay() === 6
@@ -172,9 +179,9 @@ export default function CalendarView({
               <span className={`text-xs font-medium ${isToday ? 'text-blue-600' : isWeekend ? 'text-gray-400' : 'text-gray-700'}`}>
                 {day}
               </span>
-              {assigned && (
-                <div className="mt-0.5 rounded bg-blue-100 px-1 py-0.5 text-[11px] text-blue-800 leading-tight truncate">{assigned.name}</div>
-              )}
+              {dayShifts.map(s => (
+                <div key={s.id} className="mt-0.5 rounded bg-blue-100 px-1 py-0.5 text-[11px] text-blue-800 leading-tight truncate">{s.name}</div>
+              ))}
               {onVacation?.map(d => (
                 <div key={d.name} className="mt-0.5 rounded bg-amber-100 px-1 py-0.5 text-[11px] text-amber-800 leading-tight truncate">{d.name}</div>
               ))}
@@ -190,7 +197,7 @@ export default function CalendarView({
       </div>
 
       {popup && (() => {
-        const shift = shiftMap.get(popup.date)
+        const popupShifts = shiftsByDate.get(popup.date) ?? []
         const vacs = vacationByDate.get(popup.date) ?? []
         return (
           <>
@@ -203,14 +210,14 @@ export default function CalendarView({
               <p className="mb-2 text-sm font-semibold text-gray-900">
                 {new Date(popup.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', weekday: 'long' })}
               </p>
-              {shift && (
-                <div className="mb-1.5 flex items-center gap-2 text-sm">
+              {popupShifts.map(s => (
+                <div key={s.id} className="mb-1.5 flex items-center gap-2 text-sm">
                   <span className="inline-block h-2.5 w-2.5 rounded bg-blue-400" />
-                  <span className="text-blue-800">{shift.name}</span>
-                  <span className="rounded bg-gray-100 px-1 py-0.5 text-[10px] font-medium uppercase text-gray-500">{shift.team}</span>
+                  <span className="text-blue-800">{s.name}</span>
+                  <span className="rounded bg-gray-100 px-1 py-0.5 text-[10px] font-medium uppercase text-gray-500">{s.team}</span>
                   <span className="text-[11px] text-gray-400">дежурство</span>
                 </div>
-              )}
+              ))}
               {vacs.map(d => (
                 <div key={d.name} className="mb-1.5 flex items-center gap-2 text-sm">
                   <span className="inline-block h-2.5 w-2.5 rounded bg-amber-400" />
@@ -219,7 +226,7 @@ export default function CalendarView({
                   <span className="text-[11px] text-gray-400">отпуск</span>
                 </div>
               ))}
-              {!shift && vacs.length === 0 && (
+              {popupShifts.length === 0 && vacs.length === 0 && (
                 <p className="text-sm text-gray-400">Нет данных</p>
               )}
             </div>

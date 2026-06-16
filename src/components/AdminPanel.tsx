@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { ChevronLeft, ChevronRight, Trash2, Plus, Users, CalendarDays, Palmtree } from 'lucide-react'
 import { createClient } from '@/lib/supabase-client'
-import { setShift, removeShift, autoAssignShifts, clearShiftsForMonth, addVacation, deleteVacation, addDeveloper, updateDeveloper, deleteDeveloper } from '@/app/actions'
+import { addShift, removeShift, autoAssignShifts, clearShiftsForMonth, addVacation, deleteVacation, addDeveloper, updateDeveloper, deleteDeveloper } from '@/app/actions'
 import type { Developer, ShiftWithDeveloper, VacationWithDeveloper, Team } from '@/lib/types'
 import { TEAMS } from '@/lib/types'
 
@@ -29,7 +29,6 @@ export default function AdminPanel({
   const [shifts, setShifts] = useState<ShiftWithDeveloper[]>([])
   const [vacations, setVacations] = useState<VacationWithDeveloper[]>([])
   const [developers, setDevelopers] = useState(initialDevelopers)
-  const [editingDate, setEditingDate] = useState<string | null>(null)
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null)
   const [autoAssignLoading, setAutoAssignLoading] = useState(false)
   const [editingDev, setEditingDev] = useState<string | null>(null)
@@ -111,10 +110,10 @@ export default function AdminPanel({
     showMsg('Месяц очищен', true)
   }
 
-  const handleSetShift = async (formData: FormData) => {
-    const res = await setShift(formData)
+  const handleAddShift = async (formData: FormData) => {
+    const res = await addShift(formData)
     if (res.error) showMsg(res.error, false)
-    else { setEditingDate(null); fetchShifts(year, month); showMsg('Сохранено', true) }
+    else { fetchShifts(year, month); showMsg('Назначен', true) }
   }
 
   const handleRemoveShift = async (formData: FormData) => {
@@ -179,8 +178,11 @@ export default function AdminPanel({
 
   // ── Shift map ──
   const daysInMonth = new Date(year, month, 0).getDate()
-  const shiftMap = new Map<string, ShiftWithDeveloper>()
-  shifts.forEach(s => shiftMap.set(s.date, s))
+  const shiftsByDate = new Map<string, ShiftWithDeveloper[]>()
+  shifts.forEach(s => {
+    if (!shiftsByDate.has(s.date)) shiftsByDate.set(s.date, [])
+    shiftsByDate.get(s.date)!.push(s)
+  })
 
   const filteredDevs = teamFilter === 'all' ? developers : developers.filter(d => d.team === teamFilter)
 
@@ -188,12 +190,13 @@ export default function AdminPanel({
     ? vacations
     : vacations.filter(v => developers.find(d => d.id === v.developer_id)?.team === teamFilter)
 
-  const filteredShiftMap = teamFilter === 'all'
-    ? shiftMap
+  const filteredShiftsByDate = teamFilter === 'all'
+    ? shiftsByDate
     : new Map(
-        Array.from(shiftMap.entries()).filter(([_, s]) =>
-          developers.find(d => d.id === s.developer_id)?.team === teamFilter
-        )
+        Array.from(shiftsByDate.entries()).map(([date, shifts]) => [
+          date,
+          shifts.filter(s => developers.find(d => d.id === s.developer_id)?.team === teamFilter),
+        ])
       )
 
   // ── Tabs ──
@@ -253,44 +256,45 @@ export default function AdminPanel({
             {Array.from({ length: daysInMonth }).map((_, i) => {
               const day = i + 1
               const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-              const shift = filteredShiftMap.get(dateStr)
-              const isEditing = editingDate === dateStr
+              const dayShifts = filteredShiftsByDate.get(dateStr) ?? []
               const dateObj = new Date(year, month - 1, day)
               const isWeekend = dateObj.getDay() === 0 || dateObj.getDay() === 6
               const dayNames = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб']
 
               return (
-                <div key={dateStr} className={`flex items-center gap-3 rounded-lg border bg-white px-4 py-2 ${isWeekend ? 'opacity-40' : ''}`}>
-                  <span className={`flex w-12 items-center gap-1 text-sm font-medium ${isWeekend ? 'text-gray-400' : 'text-gray-600'}`}>
-                    {day} <span className="text-[10px] text-gray-400">{dayNames[dateObj.getDay()]}</span>
-                  </span>
-                  {shift && !isEditing ? (
-                    <>
-                      <span className="flex-1 text-sm">{shift.developers.name}</span>
-                      {!isWeekend && (
-                        <>
-                          <button onClick={() => setEditingDate(dateStr)} className="text-xs text-blue-600 hover:text-blue-800">Изменить</button>
-                          <form action={handleRemoveShift}>
-                            <input type="hidden" name="id" value={shift.id} />
-                            <button type="submit" className="rounded p-1 text-red-500 hover:bg-red-50"><Trash2 className="h-4 w-4" /></button>
-                          </form>
-                        </>
-                      )}
-                    </>
-                  ) : !isWeekend ? (
-                    <form action={handleSetShift} className="flex flex-1 items-center gap-2">
-                      <input type="hidden" name="date" value={dateStr} />
-                      <select name="developer_id" defaultValue={shift?.developer_id ?? ''}
-                        className="flex-1 rounded border px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-blue-500" autoFocus>
-                        <option value="" disabled>Выберите разработчика</option>
-                        {filteredDevs.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                      </select>
-                      <button type="submit" className="rounded bg-blue-600 px-3 py-1 text-xs text-white hover:bg-blue-700">{shift ? 'Обновить' : 'Назначить'}</button>
-                      {isEditing && <button type="button" onClick={() => setEditingDate(null)} className="text-xs text-gray-500 hover:text-gray-700">Отмена</button>}
-                    </form>
-                  ) : (
-                    <span className="flex-1 text-xs text-gray-400">Выходной</span>
-                  )}
+                <div key={dateStr} className={`rounded-lg border bg-white px-4 py-2 ${isWeekend ? 'opacity-40' : ''}`}>
+                  <div className="flex items-center gap-3">
+                    <span className={`flex w-12 items-center gap-1 text-sm font-medium ${isWeekend ? 'text-gray-400' : 'text-gray-600'}`}>
+                      {day} <span className="text-[10px] text-gray-400">{dayNames[dateObj.getDay()]}</span>
+                    </span>
+                    {!isWeekend && (
+                      <div className="flex flex-1 flex-wrap items-center gap-1.5">
+                        {dayShifts.map(s => {
+                          const dev = s.developers as { name: string; team: string }
+                          return (
+                            <div key={s.id} className="flex items-center gap-1 rounded bg-blue-50 px-2 py-0.5 text-sm text-blue-800">
+                              <span>{dev.name}</span>
+                              <span className="rounded bg-gray-100 px-1 py-0.5 text-[10px] font-medium uppercase text-gray-500">{dev.team}</span>
+                              <form action={handleRemoveShift}>
+                                <input type="hidden" name="id" value={s.id} />
+                                <button type="submit" className="ml-0.5 rounded p-0.5 text-red-400 hover:text-red-600"><Trash2 className="h-3 w-3" /></button>
+                              </form>
+                            </div>
+                          )
+                        })}
+                        <form action={handleAddShift} className="flex items-center gap-1">
+                          <input type="hidden" name="date" value={dateStr} />
+                          <select name="developer_id" defaultValue=""
+                            className="rounded border px-1.5 py-0.5 text-xs outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="" disabled>+</option>
+                            {filteredDevs.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                          </select>
+                          <button type="submit" className="rounded bg-blue-600 px-2 py-0.5 text-xs text-white hover:bg-blue-700">OK</button>
+                        </form>
+                      </div>
+                    )}
+                    {isWeekend && <span className="flex-1 text-xs text-gray-400">Выходной</span>}
+                  </div>
                 </div>
               )
             })}

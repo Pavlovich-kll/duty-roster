@@ -91,7 +91,7 @@ export async function getShifts(year: number, month: number) {
   return data ?? []
 }
 
-export async function setShift(formData: FormData) {
+export async function addShift(formData: FormData) {
   const supabase = await createClient()
   await assertAdmin(supabase)
 
@@ -101,7 +101,7 @@ export async function setShift(formData: FormData) {
 
   const { error } = await supabase
     .from('duty_shifts')
-    .upsert({ developer_id: developerId, date }, { onConflict: 'date' })
+    .insert({ developer_id: developerId, date })
 
   if (error) return { error: error.message }
   revalidatePath('/dashboard')
@@ -172,13 +172,6 @@ export async function autoAssignShifts(year: number, month: number) {
     }
   }
 
-  const { data: existingShifts } = await supabase
-    .from('duty_shifts')
-    .select('date')
-    .gte('date', startDate).lte('date', endDate)
-
-  const existingDates = new Set(existingShifts?.map(s => s.date) ?? [])
-
   const { data: lastShift } = await supabase
     .from('duty_shifts')
     .select('developer_id')
@@ -204,7 +197,6 @@ export async function autoAssignShifts(year: number, month: number) {
   let currentIndex = startIndex
 
   for (const dateStr of workingDays) {
-    if (existingDates.has(dateStr)) continue
     for (let i = 0; i < developers.length; i++) {
       const idx = (currentIndex + i) % developers.length
       const d = developers[idx]
@@ -219,7 +211,7 @@ export async function autoAssignShifts(year: number, month: number) {
   if (assignments.length > 0) {
     const { error } = await supabase
       .from('duty_shifts')
-      .upsert(assignments, { onConflict: 'date', ignoreDuplicates: false })
+      .insert(assignments)
     if (error) return { error: error.message }
   }
 
