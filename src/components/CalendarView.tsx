@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { createClient } from '@/lib/supabase-client'
 import type { ShiftWithDeveloper, VacationWithDeveloper } from '@/lib/types'
@@ -33,6 +33,8 @@ export default function CalendarView({
   const [month, setMonth] = useState(initialMonth)
   const [shifts, setShifts] = useState<ShiftWithDeveloper[]>([])
   const [vacations, setVacations] = useState<VacationWithDeveloper[]>([])
+  const [popup, setPopup] = useState<{ date: string; x: number; y: number } | null>(null)
+  const popupRef = useRef<HTMLDivElement>(null)
   const supabase = createClient()
 
   const fetchData = useCallback(async (y: number, m: number) => {
@@ -123,7 +125,14 @@ export default function CalendarView({
           const isToday = today.getFullYear() === year && today.getMonth() + 1 === month && today.getDate() === day
 
           return (
-            <div key={dateStr} className={`bg-white px-1.5 py-1 min-h-[90px] ${isToday ? 'ring-2 ring-blue-400 ring-inset' : ''} ${isWeekend ? 'bg-gray-50' : ''}`}>
+            <div
+              key={dateStr}
+              onClick={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect()
+                setPopup(popup?.date === dateStr ? null : { date: dateStr, x: rect.left, y: rect.bottom + 4 })
+              }}
+              className={`relative bg-white px-1.5 py-1 min-h-[90px] cursor-pointer transition-colors hover:bg-gray-50 ${isToday ? 'ring-2 ring-blue-400 ring-inset' : ''} ${isWeekend ? 'bg-gray-50' : ''}`}
+            >
               <span className={`text-xs font-medium ${isToday ? 'text-blue-600' : isWeekend ? 'text-gray-400' : 'text-gray-700'}`}>
                 {day}
               </span>
@@ -143,6 +152,42 @@ export default function CalendarView({
         <span className="flex items-center gap-1"><span className="inline-block h-3 w-3 rounded bg-amber-100" /> отпуск</span>
         <span className="flex items-center gap-1"><span className="inline-block h-3 w-3 rounded bg-gray-50 border" /> выходной</span>
       </div>
+
+      {popup && (() => {
+        const shift = shiftMap.get(popup.date)
+        const vacs = vacationByDate.get(popup.date) ?? []
+        return (
+          <>
+            <div className="fixed inset-0 z-10" onClick={() => setPopup(null)} />
+            <div
+              ref={popupRef}
+              className="fixed z-20 min-w-[220px] rounded-lg border bg-white p-3 shadow-lg"
+              style={{ left: Math.min(popup.x, window.innerWidth - 240), top: popup.y }}
+            >
+              <p className="mb-2 text-sm font-semibold text-gray-900">
+                {new Date(popup.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', weekday: 'long' })}
+              </p>
+              {shift && (
+                <div className="mb-1.5 flex items-center gap-2 text-sm">
+                  <span className="inline-block h-2.5 w-2.5 rounded bg-blue-400" />
+                  <span className="text-blue-800">{shift}</span>
+                  <span className="text-[11px] text-gray-400">дежурство</span>
+                </div>
+              )}
+              {vacs.map(name => (
+                <div key={name} className="mb-1.5 flex items-center gap-2 text-sm">
+                  <span className="inline-block h-2.5 w-2.5 rounded bg-amber-400" />
+                  <span className="text-amber-800">{name}</span>
+                  <span className="text-[11px] text-gray-400">отпуск</span>
+                </div>
+              ))}
+              {!shift && vacs.length === 0 && (
+                <p className="text-sm text-gray-400">Нет данных</p>
+              )}
+            </div>
+          </>
+        )
+      })()}
 
       {isAdmin && (
         <div className="mt-4 text-center">
