@@ -30,7 +30,9 @@ export async function proxy(request: NextRequest) {
   if (
     !user.data.user &&
     !request.nextUrl.pathname.startsWith('/login') &&
-    !request.nextUrl.pathname.startsWith('/auth')
+    !request.nextUrl.pathname.startsWith('/auth') &&
+    !request.nextUrl.pathname.startsWith('/dashboard') &&
+    request.nextUrl.pathname !== '/'
   ) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'

@@ -29,12 +29,11 @@ export default function Navbar({ profile }: { profile: Profile | null }) {
               Управление
             </a>
           )}
-          <button
-            onClick={handleLogout}
-            className="text-sm text-gray-500 hover:text-gray-700"
-          >
-            Выйти
-          </button>
+          {profile ? (
+            <button onClick={handleLogout} className="text-sm text-gray-500 hover:text-gray-700">Выйти</button>
+          ) : (
+            <a href="/login" className="text-sm text-blue-600 hover:text-blue-800">Войти</a>
+          )}
         </div>
       </div>
     </header>
