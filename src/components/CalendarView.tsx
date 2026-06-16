@@ -45,12 +45,12 @@ export default function CalendarView({
     const [shiftsRes, vacsRes] = await Promise.all([
       supabase
         .from('duty_shifts')
-        .select('id, developer_id, date, developers(name)')
+        .select('id, developer_id, date, developers(name, team)')
         .gte('date', start).lte('date', end)
         .order('date', { ascending: true }),
       supabase
         .from('vacations')
-        .select('id, developer_id, start_date, end_date, developers(name)')
+        .select('id, developer_id, start_date, end_date, developers(name, team)')
         .lte('start_date', end).gte('end_date', start)
         .order('start_date', { ascending: true }),
     ])
@@ -82,17 +82,17 @@ export default function CalendarView({
   const firstDay = getFirstDayOfMonth(year, month)
   const today = new Date()
 
-  const shiftMap = new Map<string, string>()
-  shifts.forEach(s => shiftMap.set(s.date, s.developers.name))
+  const shiftMap = new Map<string, { name: string; team: string }>()
+  shifts.forEach(s => shiftMap.set(s.date, s.developers as { name: string; team: string }))
 
-  const vacationByDate = new Map<string, string[]>()
+  const vacationByDate = new Map<string, { name: string; team: string }[]>()
   vacations.forEach(v => {
     const start = new Date(v.start_date)
     const end = new Date(v.end_date)
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
       const ds = d.toISOString().slice(0, 10)
       if (!vacationByDate.has(ds)) vacationByDate.set(ds, [])
-      vacationByDate.get(ds)!.push(v.developers.name)
+      vacationByDate.get(ds)!.push(v.developers as { name: string; team: string })
     }
   })
 
@@ -137,10 +137,10 @@ export default function CalendarView({
                 {day}
               </span>
               {assigned && (
-                <div className="mt-0.5 rounded bg-blue-100 px-1 py-0.5 text-[11px] text-blue-800 leading-tight truncate">{assigned}</div>
+                <div className="mt-0.5 rounded bg-blue-100 px-1 py-0.5 text-[11px] text-blue-800 leading-tight truncate">{assigned.name}</div>
               )}
-              {onVacation?.map(name => (
-                <div key={name} className="mt-0.5 rounded bg-amber-100 px-1 py-0.5 text-[11px] text-amber-800 leading-tight truncate">{name}</div>
+              {onVacation?.map(d => (
+                <div key={d.name} className="mt-0.5 rounded bg-amber-100 px-1 py-0.5 text-[11px] text-amber-800 leading-tight truncate">{d.name}</div>
               ))}
             </div>
           )
@@ -170,14 +170,16 @@ export default function CalendarView({
               {shift && (
                 <div className="mb-1.5 flex items-center gap-2 text-sm">
                   <span className="inline-block h-2.5 w-2.5 rounded bg-blue-400" />
-                  <span className="text-blue-800">{shift}</span>
+                  <span className="text-blue-800">{shift.name}</span>
+                  <span className="rounded bg-gray-100 px-1 py-0.5 text-[10px] font-medium uppercase text-gray-500">{shift.team}</span>
                   <span className="text-[11px] text-gray-400">дежурство</span>
                 </div>
               )}
-              {vacs.map(name => (
-                <div key={name} className="mb-1.5 flex items-center gap-2 text-sm">
+              {vacs.map(d => (
+                <div key={d.name} className="mb-1.5 flex items-center gap-2 text-sm">
                   <span className="inline-block h-2.5 w-2.5 rounded bg-amber-400" />
-                  <span className="text-amber-800">{name}</span>
+                  <span className="text-amber-800">{d.name}</span>
+                  <span className="rounded bg-gray-100 px-1 py-0.5 text-[10px] font-medium uppercase text-gray-500">{d.team}</span>
                   <span className="text-[11px] text-gray-400">отпуск</span>
                 </div>
               ))}
