@@ -14,7 +14,7 @@ export default function Navbar({ profile }: { profile: Profile | null }) {
   return (
     <header className="border-b bg-white shadow-sm">
       <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-3">
-        <a href="/dashboard" className="text-lg font-semibold">
+        <a href="/" className="text-lg font-semibold">
           График дежурств
         </a>
         <div className="flex items-center gap-4">
