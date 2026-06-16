@@ -140,7 +140,7 @@ export async function clearShiftsForMonth(year: number, month: number) {
   revalidatePath('/admin')
 }
 
-export async function autoAssignShifts(year: number, month: number) {
+export async function autoAssignShifts(year: number, month: number, teamFilter: string = 'all') {
   const supabase = await createClient()
   await assertAdmin(supabase)
 
@@ -148,10 +148,9 @@ export async function autoAssignShifts(year: number, month: number) {
   const endDateObj = new Date(year, month, 0)
   const endDate = `${year}-${String(month).padStart(2, '0')}-${String(endDateObj.getDate()).padStart(2, '0')}`
 
-  const { data: developers } = await supabase
-    .from('developers')
-    .select('id, name')
-    .order('sort_order', { ascending: true })
+  let query = supabase.from('developers').select('id, name, team').order('sort_order', { ascending: true })
+  if (teamFilter !== 'all') query = query.eq('team', teamFilter)
+  const { data: developers } = await query
 
   if (!developers || developers.length === 0) return { error: 'Нет разработчиков' }
 
@@ -172,12 +171,15 @@ export async function autoAssignShifts(year: number, month: number) {
     }
   }
 
-  const { data: lastShift } = await supabase
+  let devIds = developers.map(d => d.id)
+  let lastQuery = supabase
     .from('duty_shifts')
     .select('developer_id')
     .lt('date', startDate)
+    .in('developer_id', devIds)
     .order('date', { ascending: false })
     .limit(1)
+  const { data: lastShift } = await lastQuery
 
   let startIndex = 0
   if (lastShift && lastShift.length > 0) {
