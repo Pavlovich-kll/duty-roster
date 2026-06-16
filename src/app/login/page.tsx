@@ -64,6 +64,11 @@ export default function LoginPage() {
             {loading ? 'Вход...' : 'Войти'}
           </button>
         </form>
+        <div className="mt-4 text-center">
+          <a href="/dashboard" className="text-sm text-blue-600 hover:text-blue-800">
+            Просмотреть календарь без входа
+          </a>
+        </div>
         <p className="mt-4 text-center text-xs text-gray-500">
           Аккаунты создаются через Supabase Dashboard (Authentication &rarr; Users &rarr; Add User)
         </p>
