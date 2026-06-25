@@ -153,6 +153,16 @@ export async function autoAssignShifts(year: number, month: number, teamFilter: 
   const endDateObj = new Date(year, month, 0)
   const endDate = `${year}-${String(month).padStart(2, '0')}-${String(endDateObj.getDate()).padStart(2, '0')}`
 
+  // Clear existing shifts for the month before re-assigning
+  let clearQuery = supabase.from('duty_shifts').delete().gte('date', startDate).lte('date', endDate)
+  if (teamFilter !== 'all') {
+    const { data: devs } = await supabase.from('developers').select('id').eq('team', teamFilter)
+    const ids = (devs ?? []).map(d => d.id)
+    if (ids.length > 0) clearQuery = clearQuery.in('developer_id', ids)
+    else return { error: 'Нет разработчиков' }
+  }
+  await clearQuery
+
   let query = supabase.from('developers').select('id, name, team').order('sort_order', { ascending: true })
   if (teamFilter !== 'all') query = query.eq('team', teamFilter)
   const { data: developers } = await query
@@ -224,7 +234,100 @@ export async function autoAssignShifts(year: number, month: number, teamFilter: 
 
   revalidatePath('/dashboard')
   revalidatePath('/admin')
-  return { count: assignments.length }
+  return { success: true }
+}
+
+// ── Duty sections ──────────────────────────────────────
+
+export async function getDutySections() {
+  const supabase = await createClient()
+  const { data: sections } = await supabase
+    .from('duty_sections')
+    .select('*')
+    .order('sort_order')
+  if (!sections) return []
+  const { data: items } = await supabase
+    .from('duty_items')
+    .select('*')
+    .order('sort_order')
+  const itemsBySection = new Map<number, typeof items>()
+  for (const item of items ?? []) {
+    if (!itemsBySection.has(item.section_id)) itemsBySection.set(item.section_id, [])
+    itemsBySection.get(item.section_id)!.push(item)
+  }
+  return sections.map(s => ({ ...s, items: itemsBySection.get(s.id) ?? [] }))
+}
+
+export async function updateDutyItem(formData: FormData) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Не авторизован' }
+
+  const id = formData.get('id') as string
+  const text = formData.get('text') as string
+  if (!id || !text) return { error: 'Заполните поле' }
+
+  const { error } = await supabase.from('duty_items').update({ text }).eq('id', id)
+  if (error) return { error: error.message }
+  revalidatePath('/dashboard')
+  return { success: true }
+}
+
+export async function createDutyItem(formData: FormData) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Не авторизован' }
+
+  const sectionId = formData.get('section_id') as string
+  const text = formData.get('text') as string
+  const level = parseInt(formData.get('level') as string) || 0
+  if (!sectionId || !text) return { error: 'Заполните поле' }
+
+  const { data: maxSort } = await supabase
+    .from('duty_items')
+    .select('sort_order')
+    .eq('section_id', sectionId)
+    .order('sort_order', { ascending: false })
+    .limit(1)
+
+  const sortOrder = (maxSort && maxSort[0]?.sort_order != null) ? maxSort[0].sort_order + 1 : 1
+
+  const { error } = await supabase
+    .from('duty_items')
+    .insert({ section_id: parseInt(sectionId), text, level, sort_order: sortOrder })
+
+  if (error) return { error: error.message }
+  revalidatePath('/dashboard')
+  return { success: true }
+}
+
+export async function deleteDutyItem(formData: FormData) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Не авторизован' }
+
+  const id = formData.get('id') as string
+  if (!id) return { error: 'Missing id' }
+
+  const { error } = await supabase.from('duty_items').delete().eq('id', id)
+  if (error) return { error: error.message }
+  revalidatePath('/dashboard')
+  return { success: true }
+}
+
+export async function updateDutySectionTitle(formData: FormData) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Не авторизован' }
+
+  const id = formData.get('id') as string
+  const title = formData.get('title') as string
+  if (!id || !title) return { error: 'Заполните название' }
+
+  const { error } = await supabase.from('duty_sections').update({ title }).eq('id', id)
+  if (error) return { error: error.message }
+  revalidatePath('/dashboard')
+  return { success: true }
 }
 
 // ── Vacations ─────────────────────────────────────────

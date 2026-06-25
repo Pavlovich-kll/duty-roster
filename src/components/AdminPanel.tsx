@@ -100,7 +100,7 @@ export default function AdminPanel({
     const label = teamFilter === 'all' ? 'все' : teamFilter
     const res = await autoAssignShifts(year, month, teamFilter)
     if ('error' in res) showMsg(res.error || 'Ошибка', false)
-    else { fetchShifts(year, month); showMsg(`Назначено ${res.count} дежурств (${label})`, true) }
+    else { fetchShifts(year, month); showMsg(`Назначено ${(res as any).count} дежурств (${label})`, true) }
     setAutoAssignLoading(false)
   }
 

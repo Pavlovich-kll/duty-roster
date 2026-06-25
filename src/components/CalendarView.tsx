@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
-import { createClient } from '@/lib/supabase-client'
 import type { ShiftWithDeveloper, VacationWithDeveloper } from '@/lib/types'
 
 function getDaysInMonth(year: number, month: number) {
@@ -20,6 +19,9 @@ const MONTHS = [
 
 const DAYS = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб']
 
+let shiftsCache: { key: string; data: ShiftWithDeveloper[] } | null = null
+let vacsCache: { key: string; data: VacationWithDeveloper[] } | null = null
+
 export default function CalendarView({
   year: initialYear,
   month: initialMonth,
@@ -31,43 +33,32 @@ export default function CalendarView({
 }) {
   const [year, setYear] = useState(initialYear)
   const [month, setMonth] = useState(initialMonth)
-  const [shifts, setShifts] = useState<ShiftWithDeveloper[]>([])
-  const [vacations, setVacations] = useState<VacationWithDeveloper[]>([])
+  const [shifts, setShifts] = useState<ShiftWithDeveloper[]>(shiftsCache?.data ?? [])
+  const [vacations, setVacations] = useState<VacationWithDeveloper[]>(vacsCache?.data ?? [])
   const [popup, setPopup] = useState<{ date: string; x: number; y: number } | null>(null)
   const popupRef = useRef<HTMLDivElement>(null)
-  const supabase = createClient()
+
+  const cacheKey = `${year}-${month}`
 
   const fetchData = useCallback(async (y: number, m: number) => {
-    const start = `${y}-${String(m).padStart(2, '0')}-01`
-    const endDate = new Date(y, m, 0)
-    const end = `${y}-${String(m).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}`
+    const key = `${y}-${m}`
+    if (shiftsCache?.key === key && vacsCache?.key === key) return
 
     const [shiftsRes, vacsRes] = await Promise.all([
-      supabase
-        .from('duty_shifts')
-        .select('id, developer_id, date, developers(name, team)')
-        .gte('date', start).lte('date', end)
-        .order('date', { ascending: true }),
-      supabase
-        .from('vacations')
-        .select('id, developer_id, start_date, end_date, developers(name, team)')
-        .lte('start_date', end).gte('end_date', start)
-        .order('start_date', { ascending: true }),
+      fetch(`/api/shifts?year=${y}&month=${m}`),
+      fetch(`/api/vacations?year=${y}&month=${m}`),
     ])
 
-    setShifts((shiftsRes.data ?? []) as any)
-    setVacations((vacsRes.data ?? []) as any)
-  }, [supabase])
+    const shiftsData = await shiftsRes.json()
+    const vacsData = await vacsRes.json()
+
+    shiftsCache = { key, data: shiftsData }
+    vacsCache = { key, data: vacsData }
+    setShifts(shiftsData)
+    setVacations(vacsData)
+  }, [])
 
   useEffect(() => { fetchData(year, month) }, [year, month, fetchData])
-
-  useEffect(() => {
-    const channel = supabase.channel('calendar-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'duty_shifts' }, () => fetchData(year, month))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'vacations' }, () => fetchData(year, month))
-      .subscribe()
-    return () => { supabase.removeChannel(channel) }
-  }, [year, month, supabase, fetchData])
 
   const prevMonth = () => {
     if (month === 1) { setYear(y => y - 1); setMonth(12) }
