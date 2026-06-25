@@ -1,6 +1,40 @@
 import { describe, it, expect } from 'vitest'
 import { assignShifts, buildVacationMap, getWorkingDays, type Developer, type VacationMap } from '@/lib/assign-shifts'
 
+// Reference implementation matching user's Google Sheets CALCULATE_DUTY function
+function sheetsAssign(
+  developers: Developer[],
+  workingDays: string[],
+  vacationMap: VacationMap,
+  startIndex: number = 0,
+): { developer_id: string; date: string }[] {
+  if (developers.length === 0) return []
+
+  const assignments: { developer_id: string; date: string }[] = []
+  let current = startIndex
+  const num = developers.length
+
+  for (const dateStr of workingDays) {
+    let found = false
+    let attempts = 0
+    while (!found && attempts < num) {
+      const onVacation = vacationMap.has(developers[current].id) && vacationMap.get(developers[current].id)!.has(dateStr)
+      if (onVacation) {
+        current = (current + 1) % num
+        attempts++
+      } else {
+        found = true
+      }
+    }
+    if (found) {
+      assignments.push({ developer_id: developers[current].id, date: dateStr })
+      current = (current + 1) % num
+    }
+  }
+
+  return assignments
+}
+
 const devs: Developer[] = [
   { id: '1', name: 'Alice', team: 'java' },
   { id: '2', name: 'Bob', team: 'java' },
@@ -208,5 +242,79 @@ describe('assignShifts - team filtering', () => {
     ])
     const a = assignShifts(javaDevs, ['2026-06-01'], vacMap)
     expect(a[0].developer_id).toBe('2') // Bob (Alice is on vacation)
+  })
+})
+
+describe('matching reference Sheets function', () => {
+  it('produces identical output for June 2026 with vacation', () => {
+    const tenDevs: Developer[] = Array.from({ length: 10 }, (_, i) => ({
+      id: String(i + 1),
+      name: `Dev${i + 1}`,
+      team: 'java',
+    }))
+
+    const days = getWorkingDays(2026, 6)
+    const vacMap = buildVacationMap([
+      { developer_id: '10', start_date: '2026-06-08', end_date: '2026-06-22' }, // last dev on vacation
+    ])
+
+    const my = assignShifts(tenDevs, days, vacMap, 0)
+    const sheets = sheetsAssign(tenDevs, days, vacMap, 0)
+
+    expect(my.length).toBe(sheets.length)
+    for (let i = 0; i < my.length; i++) {
+      expect(my[i].developer_id).toBe(sheets[i].developer_id)
+      expect(my[i].date).toBe(sheets[i].date)
+    }
+  })
+
+  it('produces identical output with multiple vacations', () => {
+    const fiveDevs: Developer[] = Array.from({ length: 5 }, (_, i) => ({
+      id: String(i + 1),
+      name: `Dev${i + 1}`,
+      team: 'java',
+    }))
+
+    const days = getWorkingDays(2026, 7) // July 2026
+    const vacMap = buildVacationMap([
+      { developer_id: '2', start_date: '2026-07-06', end_date: '2026-07-10' },
+      { developer_id: '4', start_date: '2026-07-13', end_date: '2026-07-17' },
+    ])
+
+    const my = assignShifts(fiveDevs, days, vacMap, 0)
+    const sheets = sheetsAssign(fiveDevs, days, vacMap, 0)
+
+    expect(my.length).toBe(sheets.length)
+    for (let i = 0; i < my.length; i++) {
+      if (my[i].developer_id !== sheets[i].developer_id) {
+        console.log(`Mismatch at day ${i} (${days[i]}): my=${my[i].developer_id} sheets=${sheets[i].developer_id}`)
+      }
+      expect(my[i].developer_id).toBe(sheets[i].developer_id)
+      expect(my[i].date).toBe(sheets[i].date)
+    }
+  })
+
+  it('matches for all months of 2026 with random vacations', () => {
+    const tenDevs: Developer[] = Array.from({ length: 10 }, (_, i) => ({
+      id: String(i + 1),
+      name: `Dev${i + 1}`,
+      team: 'java',
+    }))
+
+    for (let month = 1; month <= 12; month++) {
+      const days = getWorkingDays(2026, month)
+      // Simulate vacations: dev 5 off 1st week, dev 8 off 3rd week
+      const vacMap = buildVacationMap([
+        { developer_id: '5', start_date: `2026-${String(month).padStart(2, '0')}-01`, end_date: `2026-${String(month).padStart(2, '0')}-07` },
+        { developer_id: '8', start_date: `2026-${String(month).padStart(2, '0')}-15`, end_date: `2026-${String(month).padStart(2, '0')}-21` },
+      ])
+
+      const my = assignShifts(tenDevs, days, vacMap, 0)
+      const sheets = sheetsAssign(tenDevs, days, vacMap, 0)
+
+      for (let i = 0; i < my.length; i++) {
+        expect(my[i].developer_id).toBe(sheets[i].developer_id)
+      }
+    }
   })
 })

@@ -3,48 +3,58 @@
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase-client'
 import type { Profile } from '@/lib/types'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 export default function Navbar() {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
-  const supabase = createClient()
+  const supabase = useRef<SupabaseClient | null>(null)
   const mounted = useRef(true)
 
   useEffect(() => {
+    supabase.current = createClient()
     return () => { mounted.current = false }
   }, [])
 
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (!session) { setLoading(false); return }
-      const { data } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', session.user.id)
-        .single()
-      if (mounted.current) {
-        setProfile(data ?? null)
-        setLoading(false)
-      }
-    })
+    const c = supabase.current
+    if (!c) { if (mounted.current) setLoading(false); return }
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        if (session && mounted.current) {
-          supabase.from('profiles').select('*').eq('id', session.user.id).single()
-            .then(({ data }) => { if (mounted.current) setProfile(data ?? null) })
+    const timeout = setTimeout(() => {
+      if (mounted.current) setLoading(false)
+    }, 3000)
+
+    c.auth.getSession()
+      .then(async ({ data: { session } }) => {
+        if (!session) { if (mounted.current) setLoading(false); return }
+        const { data } = await c
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single()
+        if (mounted.current) {
+          setProfile(data ?? null)
+          setLoading(false)
+          clearTimeout(timeout)
         }
+      })
+      .catch(() => { if (mounted.current) setLoading(false) })
+
+    const { data: { subscription } } = c.auth.onAuthStateChange((event, session) => {
+      if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session && mounted.current) {
+        c.from('profiles').select('*').eq('id', session.user.id).single()
+          .then(({ data }) => { if (mounted.current) setProfile(data ?? null) })
       }
       if (event === 'SIGNED_OUT' && mounted.current) {
         setProfile(null)
       }
     })
 
-    return () => subscription.unsubscribe()
-  }, [supabase])
+    return () => { subscription.unsubscribe(); clearTimeout(timeout) }
+  }, [])
 
   const handleLogout = async () => {
-    await supabase.auth.signOut()
+    await supabase.current?.auth.signOut()
     window.location.href = '/login'
   }
 
