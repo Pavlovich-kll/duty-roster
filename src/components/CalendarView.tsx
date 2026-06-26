@@ -27,12 +27,13 @@ export default function CalendarView({
   month: initialMonth,
   isAdmin,
 }: {
-  year: number
-  month: number
+  year?: number
+  month?: number
   isAdmin: boolean
 }) {
-  const [year, setYear] = useState(initialYear)
-  const [month, setMonth] = useState(initialMonth)
+  const [now] = useState(() => new Date())
+  const [year, setYear] = useState(initialYear ?? now.getFullYear())
+  const [month, setMonth] = useState(initialMonth ?? now.getMonth() + 1)
   const [shifts, setShifts] = useState<ShiftWithDeveloper[]>(shiftsCache?.data ?? [])
   const [vacations, setVacations] = useState<VacationWithDeveloper[]>(vacsCache?.data ?? [])
   const [popup, setPopup] = useState<{ date: string; x: number; y: number } | null>(null)
